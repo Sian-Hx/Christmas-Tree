@@ -3,20 +3,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>圣诞树 - 手势控制</title>
+    <title>Grand Luxury Tree Final v2 Mobile</title>
     <style>
-        * { -webkit-tap-highlight-color: transparent; }
         body { margin: 0; overflow: hidden; background-color: #000000; font-family: 'Times New Roman', serif; touch-action: none; }
         #canvas-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
         
-        /* UI Overlay */
+        /* UI Overlay - Minimalist */
         #ui-layer {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             z-index: 10; pointer-events: none;
             display: flex; flex-direction: column; 
             align-items: center;
-            padding-top: 30px;
+            padding-top: 40px;
             box-sizing: border-box;
+            /* Remove transition here as we don't hide the whole layer anymore */
+        }
+        
+        /* When hidden class is applied to specific elements */
+        .ui-hidden {
+            opacity: 0;
+            pointer-events: none !important;
         }
 
         /* Loading */
@@ -37,59 +43,74 @@
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
-        /* Typography */
+        /* Typography - Centerpiece */
         h1 { 
-            color: #fceea7; font-size: 32px; margin: 0; font-weight: 400; 
-            letter-spacing: 4px; 
+            color: #fceea7; font-size: 56px; margin: 0; font-weight: 400; 
+            letter-spacing: 6px; 
             text-shadow: 0 0 50px rgba(252, 238, 167, 0.6); 
             background: linear-gradient(to bottom, #fff, #eebb66);
-            -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
             font-family: 'Cinzel', 'Times New Roman', serif;
             opacity: 0.9;
+            text-align: center;
+            line-height: 1.2;
+            transition: opacity 0.5s ease; /* Ensure smooth transitions if needed */
+        }
+        
+        @media (max-width: 600px) {
+            h1 { font-size: 36px; }
         }
 
-        /* Upload Button */
+        /* Upload Button - Restored & Elegant */
         .upload-wrapper {
-            margin-top: 15px;
+            margin-top: 20px;
             pointer-events: auto;
             text-align: center;
+            transition: opacity 0.5s ease; /* Add transition for smooth hiding */
         }
         .upload-btn {
             background: rgba(20, 20, 20, 0.6); 
             border: 1px solid rgba(212, 175, 55, 0.4); 
             color: #d4af37; 
-            padding: 10px 20px; 
+            padding: 10px 25px; 
             cursor: pointer; 
             text-transform: uppercase; 
-            letter-spacing: 2px; 
+            letter-spacing: 3px; 
             font-size: 10px;
             transition: all 0.4s;
             display: inline-block;
             backdrop-filter: blur(5px);
         }
-        .upload-btn:active { 
+        .upload-btn:hover { 
             background: #d4af37; 
             color: #000; 
+            box-shadow: 0 0 20px rgba(212, 175, 55, 0.5);
         }
         .hint-text {
-            color: rgba(212, 175, 55, 0.6);
-            font-size: 10px;
-            margin-top: 10px;
+            color: rgba(212, 175, 55, 0.5);
+            font-size: 9px;
+            margin-top: 8px;
             letter-spacing: 1px;
+            text-transform: uppercase;
         }
+
         #file-input { display: none; }
 
-        /* 响应式 */
-        @media screen and (max-width: 480px) {
-            h1 { font-size: 26px; letter-spacing: 2px; }
-            #ui-layer { padding-top: 20px; }
-            .upload-btn { padding: 8px 16px; font-size: 9px; }
+        /* Webcam feedback - Adjusted for functionality */
+        #webcam-wrapper {
+            position: absolute; bottom: 40px; right: 40px;
+            width: 120px; height: 90px;
+            border: 1px solid rgba(255,255,255,0.1);
+            overflow: hidden; 
+            opacity: 0; /* Hidden to user */
+            pointer-events: none;
+            z-index: 0;
         }
-
-        @media screen and (max-height: 500px) and (orientation: landscape) {
-            h1 { font-size: 22px; }
-            #ui-layer { padding-top: 10px; }
-            .upload-wrapper { margin-top: 8px; }
+        /* CRITICAL FIX: Video must be display:block/inline to be read by MediaPipe */
+        #webcam {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
         }
     </style>
     
@@ -111,7 +132,7 @@
 
     <div id="loader">
         <div class="spinner"></div>
-        <div class="loader-text">加载中...</div>
+        <div class="loader-text">Loading Holiday Magic</div>
     </div>
 
     <div id="canvas-container"></div>
@@ -121,25 +142,30 @@
         
         <div class="upload-wrapper">
             <label class="upload-btn">
-                添加照片
+                Add Memories
                 <input type="file" id="file-input" multiple accept="image/*">
             </label>
-            <div class="hint-text">🖐️ 张开散开 · ✊ 握拳合拢 · 🤏 捏合聚焦</div>
+            <div class="hint-text">Show hand to interact / Press 'H' to Hide</div>
         </div>
     </div>
 
-    <!-- 隐藏的视频元素用于手势识别 -->
-    <video id="webcam" autoplay playsinline style="display:none;"></video>
+    <!-- Webcam hidden structure -->
+    <!-- Removed display:none from video, handled via wrapper opacity -->
+    <div id="webcam-wrapper">
+        <video id="webcam" autoplay playsinline muted></video>
+        <canvas id="webcam-preview"></canvas>
+    </div>
 
     <script type="module">
         import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
         import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
         import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
         import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
         import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'; 
         import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision';
 
-        // --- 配置 ---
+        // --- CONFIGURATION ---
         const CONFIG = {
             colors: {
                 bg: 0x000000, 
@@ -148,27 +174,23 @@
                 accentRed: 0x990000,     
             },
             particles: {
-                count: 600,     
-                dustCount: 800, 
-                treeHeight: 20,  
-                treeRadius: 6.5    
+                count: 1500,     
+                dustCount: 2500, 
+                treeHeight: 24,  
+                treeRadius: 8    
             },
             camera: {
-                z: 55
+                z: 50 
             }
         };
 
         const STATE = {
             mode: 'TREE', 
+            focusIndex: -1, 
             focusTarget: null,
             hand: { detected: false, x: 0, y: 0 },
             rotation: { x: 0, y: 0 },
-            touch: {
-                isDragging: false,
-                lastX: 0,
-                lastY: 0,
-                pinchDistance: 0
-            }
+            numberMode: 0
         };
 
         let scene, camera, renderer, composer;
@@ -176,7 +198,7 @@
         let clock = new THREE.Clock();
         let particleSystem = []; 
         let photoMeshGroup = new THREE.Group();
-        let handLandmarker, video;
+        let handLandmarker, video, webcamCanvas, webcamCtx;
         let caneTexture; 
 
         async function init() {
@@ -190,8 +212,8 @@
             setupPostProcessing();
             setupEvents();
             
-            // 自动启动手势识别
-            await initMediaPipe();
+            // Initialize MediaPipe and handle errors silently
+            initMediaPipe().then(() => console.log('Vision Ready')).catch(console.error);
             
             const loader = document.getElementById('loader');
             loader.style.opacity = 0;
@@ -288,7 +310,10 @@
                 this.posScatter = new THREE.Vector3();
                 this.baseScale = mesh.scale.x; 
 
+                // Individual Spin Speed
+                // Photos spin slower to be readable
                 const speedMult = (type === 'PHOTO') ? 0.3 : 2.0;
+
                 this.spinSpeed = new THREE.Vector3(
                     (Math.random() - 0.5) * speedMult,
                     (Math.random() - 0.5) * speedMult,
@@ -299,6 +324,7 @@
             }
 
             calculatePositions() {
+                // TREE: Tight Spiral
                 const h = CONFIG.particles.treeHeight;
                 const halfH = h / 2;
                 let t = Math.random(); 
@@ -310,6 +336,7 @@
                 const r = rMax * (0.8 + Math.random() * 0.4); 
                 this.posTree.set(Math.cos(angle) * r, y, Math.sin(angle) * r);
 
+                // SCATTER: 3D Sphere
                 let rScatter = this.isDust ? (12 + Math.random()*20) : (8 + Math.random()*12);
                 const theta = Math.random() * Math.PI * 2;
                 const phi = Math.acos(2 * Math.random() - 1);
@@ -318,6 +345,99 @@
                     rScatter * Math.sin(phi) * Math.sin(theta),
                     rScatter * Math.cos(phi)
                 );
+            }
+
+            // 获取几何图形模式下的位置
+            getNumberPosition(index, total, number) {
+                let x, y, z;
+                const scale = 10; // 图形大小缩放因子
+                const thickness = 0.5; // 图形厚度
+                
+                // 为每个粒子生成随机的z坐标，增加立体感
+                z = (Math.random() - 0.5) * thickness;
+                
+                if (number === 1) {
+                    // 圆圈：均匀分布在圆周上
+                    const centerX = 0;
+                    const centerY = 0;
+                    const radius = scale;
+                    
+                    // 计算每个粒子在圆周上的角度
+                    const angle = (index / total) * Math.PI * 2;
+                    
+                    // 添加一些随机变化，使圆圈更自然
+                    const randomRadius = radius + (Math.random() - 0.5) * scale * 0.2;
+                    
+                    x = centerX + randomRadius * Math.cos(angle);
+                    y = centerY + randomRadius * Math.sin(angle);
+                } else if (number === 2) {
+                    // 三角形：均匀分布在三角形的三个边上
+                    const centerX = 0;
+                    const centerY = 0;
+                    const sideLength = scale * 1.5;
+                    
+                    // 三角形的三个顶点
+                    const vertices = [
+                        new THREE.Vector2(centerX, centerY + sideLength * 0.866), // 顶部顶点
+                        new THREE.Vector2(centerX - sideLength / 2, centerY - sideLength * 0.433), // 左下角
+                        new THREE.Vector2(centerX + sideLength / 2, centerY - sideLength * 0.433)  // 右下角
+                    ];
+                    
+                    const progress = index / total;
+                    const edgeLength = total / 3;
+                    const edgeIndex = Math.floor(index / edgeLength);
+                    const edgeProgress = (index % edgeLength) / edgeLength;
+                    
+                    // 计算当前边上的两个顶点
+                    const startVertex = vertices[edgeIndex];
+                    const endVertex = vertices[(edgeIndex + 1) % 3];
+                    
+                    // 在边上插值计算位置
+                    x = THREE.MathUtils.lerp(startVertex.x, endVertex.x, edgeProgress);
+                    y = THREE.MathUtils.lerp(startVertex.y, endVertex.y, edgeProgress);
+                    
+                    // 添加一些随机偏移，使三角形更自然
+                    x += (Math.random() - 0.5) * scale * 0.1;
+                    y += (Math.random() - 0.5) * scale * 0.1;
+                } else if (number === 3) {
+                    // 星星：均匀分布在五角星的五个边上
+                    const centerX = 0;
+                    const centerY = 0;
+                    const outerRadius = scale;
+                    const innerRadius = scale * 0.5;
+                    
+                    const progress = index / total;
+                    const angleStep = Math.PI * 2 / 5;
+                    const starVertices = [];
+                    
+                    // 生成五角星的10个顶点（5个外顶点，5个内顶点）
+                    for (let i = 0; i < 10; i++) {
+                        const radius = i % 2 === 0 ? outerRadius : innerRadius;
+                        const angle = i * angleStep / 2 - Math.PI / 2;
+                        starVertices.push(new THREE.Vector2(
+                            centerX + radius * Math.cos(angle),
+                            centerY + radius * Math.sin(angle)
+                        ));
+                    }
+                    
+                    const edgeLength = total / 10;
+                    const edgeIndex = Math.floor(index / edgeLength);
+                    const edgeProgress = (index % edgeLength) / edgeLength;
+                    
+                    // 计算当前边上的两个顶点
+                    const startVertex = starVertices[edgeIndex];
+                    const endVertex = starVertices[(edgeIndex + 1) % 10];
+                    
+                    // 在边上插值计算位置
+                    x = THREE.MathUtils.lerp(startVertex.x, endVertex.x, edgeProgress);
+                    y = THREE.MathUtils.lerp(startVertex.y, endVertex.y, edgeProgress);
+                    
+                    // 添加一些随机偏移，使星星更自然
+                    x += (Math.random() - 0.5) * scale * 0.1;
+                    y += (Math.random() - 0.5) * scale * 0.1;
+                }
+                
+                return new THREE.Vector3(x, y, z);
             }
 
             update(dt, mode, focusTargetMesh) {
@@ -332,16 +452,24 @@
                     } else {
                         target = this.posScatter;
                     }
+                } else if (mode === 'NUMBER') {
+                    // 数字模式：根据手势排列粒子
+                    const index = particleSystem.indexOf(this);
+                    const total = particleSystem.length;
+                    target = this.getNumberPosition(index, total, STATE.numberMode);
                 }
 
+                // Movement Easing
                 const lerpSpeed = (mode === 'FOCUS' && this.mesh === focusTargetMesh) ? 5.0 : 2.0; 
                 this.mesh.position.lerp(target, lerpSpeed * dt);
 
+                // Rotation Logic - CRITICAL: Ensure spin happens in Scatter
                 if (mode === 'SCATTER') {
                     this.mesh.rotation.x += this.spinSpeed.x * dt;
                     this.mesh.rotation.y += this.spinSpeed.y * dt;
-                    this.mesh.rotation.z += this.spinSpeed.z * dt;
+                    this.mesh.rotation.z += this.spinSpeed.z * dt; // Added Z for more natural tumble
                 } else if (mode === 'TREE') {
+                    // Reset rotations slowly
                     this.mesh.rotation.x = THREE.MathUtils.lerp(this.mesh.rotation.x, 0, dt);
                     this.mesh.rotation.z = THREE.MathUtils.lerp(this.mesh.rotation.z, 0, dt);
                     this.mesh.rotation.y += 0.5 * dt; 
@@ -351,11 +479,13 @@
                     this.mesh.lookAt(camera.position); 
                 }
 
+                // Scale Logic
                 let s = this.baseScale;
                 if (this.isDust) {
                     s = this.baseScale * (0.8 + 0.4 * Math.sin(clock.elapsedTime * 4 + this.mesh.id));
                     if (mode === 'TREE') s = 0; 
                 } else if (mode === 'SCATTER' && this.type === 'PHOTO') {
+                    // Large preview size in scatter
                     s = this.baseScale * 2.5; 
                 } else if (mode === 'FOCUS') {
                     if (this.mesh === focusTargetMesh) s = 4.5; 
@@ -366,6 +496,7 @@
             }
         }
 
+        // --- CREATION ---
         function createParticles() {
             const sphereGeo = new THREE.SphereGeometry(0.5, 32, 32); 
             const boxGeo = new THREE.BoxGeometry(0.55, 0.55, 0.55); 
@@ -503,39 +634,57 @@
             });
         }
 
-        // --- MEDIAPIPE 手势识别 ---
+        // --- MEDIAPIPE & WEBCAM ---
         async function initMediaPipe() {
-            try {
-                video = document.getElementById('webcam');
+            video = document.getElementById('webcam');
+            webcamCanvas = document.getElementById('webcam-preview');
+            webcamCtx = webcamCanvas.getContext('2d');
+            webcamCanvas.width = 160; webcamCanvas.height = 120;
 
-                const vision = await FilesetResolver.forVisionTasks(
-                    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm"
-                );
-                handLandmarker = await HandLandmarker.createFromOptions(vision, {
-                    baseOptions: {
-                        modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
-                        delegate: "GPU"
-                    },
-                    runningMode: "VIDEO",
-                    numHands: 1
-                });
-                
-                if (navigator.mediaDevices?.getUserMedia) {
+            const vision = await FilesetResolver.forVisionTasks(
+                "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm"
+            );
+            handLandmarker = await HandLandmarker.createFromOptions(vision, {
+                baseOptions: {
+                    modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
+                    delegate: "GPU"
+                },
+                runningMode: "VIDEO",
+                numHands: 1
+            });
+            
+            if (navigator.mediaDevices?.getUserMedia) {
+                try {
+                    // --- MOBILE FIXES ---
+                    // 1. Use specific constraints for mobile front camera
+                    // 2. Lower resolution slightly for better mobile performance
                     const constraints = {
-                        video: { facingMode: 'user', width: { ideal: 320 }, height: { ideal: 240 } }
+                        video: {
+                            facingMode: "user", // Requests front camera on mobile
+                            width: { ideal: 640 }, // Lower resolution to prevent lag
+                            height: { ideal: 480 }
+                        },
+                        audio: false
                     };
+
                     const stream = await navigator.mediaDevices.getUserMedia(constraints);
                     video.srcObject = stream;
+                    
+                    // iOS requires explicit play in some contexts, and 'playsinline' attribute (handled in HTML)
+                    await video.play();
+                    
                     video.addEventListener("loadeddata", predictWebcam);
+                } catch (err) {
+                    console.error("Webcam access error:", err);
+                    alert("Unable to access camera. Please ensure you are using HTTPS and have allowed camera permissions.");
                 }
-            } catch (err) {
-                console.warn('MediaPipe initialization failed:', err);
             }
         }
 
         let lastVideoTime = -1;
         async function predictWebcam() {
-            if (video.currentTime !== lastVideoTime) {
+            // Check if video is actually ready and has dimensions
+            if (video.videoWidth > 0 && video.currentTime !== lastVideoTime) {
                 lastVideoTime = video.currentTime;
                 if (handLandmarker) {
                     const result = handLandmarker.detectForVideo(video, performance.now());
@@ -545,39 +694,49 @@
             requestAnimationFrame(predictWebcam);
         }
 
-        // 检测单根手指是否弯曲（使用多个关节点判断）
-        function isFingerCurled(lm, tipIdx, pipIdx, mcpIdx) {
-            const tip = lm[tipIdx];
-            const pip = lm[pipIdx];
-            const mcp = lm[mcpIdx];
-            const wrist = lm[0];
-            
-            // 方法1：指尖到手腕的距离 vs 指根到手腕的距离
-            const tipToWrist = Math.hypot(tip.x - wrist.x, tip.y - wrist.y, tip.z - wrist.z);
-            const mcpToWrist = Math.hypot(mcp.x - wrist.x, mcp.y - wrist.y, mcp.z - wrist.z);
-            
-            // 方法2：检查Y轴（在正常手势下，弯曲的手指tip.y > pip.y）
-            // 这里用相对比较，更鲁棒
-            const tipBelowPip = tip.y > pip.y + 0.02; // 指尖在PIP关节下方
-            
-            // 综合判断：指尖比指根更接近手腕，或者指尖在PIP下方
-            return (tipToWrist < mcpToWrist * 0.85) || tipBelowPip;
+        // 数字手势识别辅助函数
+        function isFingerUp(landmark, tipIndex, dipIndex, pipIndex, mcpIndex) {
+            // 检查手指是否伸直（指尖高于指节）
+            return landmark[tipIndex].y < landmark[dipIndex].y && 
+                   landmark[dipIndex].y < landmark[pipIndex].y && 
+                   landmark[pipIndex].y < landmark[mcpIndex].y;
         }
 
-        // 检测拇指是否弯曲（拇指结构不同，单独处理）
-        function isThumbCurled(lm) {
-            const thumbTip = lm[4];
-            const thumbIp = lm[3];
-            const thumbMcp = lm[2];
-            const indexMcp = lm[5];
+        // 识别手势代表的数字（1-5）
+        function recognizeNumberGesture(landmarks) {
+            const lm = landmarks[0];
             
-            // 拇指尖到食指根部的距离（弯曲时会靠近）
-            const thumbToIndex = Math.hypot(thumbTip.x - indexMcp.x, thumbTip.y - indexMcp.y);
+            // 检查每个手指是否伸直
+            const thumbUp = lm[4].x > lm[3].x; // 拇指特殊处理 (Simplified for general cases)
+            const indexUp = isFingerUp(lm, 8, 7, 6, 5);
+            const middleUp = isFingerUp(lm, 12, 11, 10, 9);
+            const ringUp = isFingerUp(lm, 16, 15, 14, 13);
+            const pinkyUp = isFingerUp(lm, 20, 19, 18, 17);
             
-            // 拇指尖到拇指根的距离
-            const thumbLength = Math.hypot(thumbTip.x - thumbMcp.x, thumbTip.y - thumbMcp.y);
+            // 计算伸直的手指数量
+            let fingersUp = 0;
+            // Thumb check is tricky in 2D without depth, treating simple extension logic
+            // For now, focusing on main fingers for 1, 2, 3
+            if (indexUp) fingersUp++;
+            if (middleUp) fingersUp++;
+            if (ringUp) fingersUp++;
+            if (pinkyUp) fingersUp++;
+            // Thumb logic can vary based on hand orientation, kept simple here
             
-            return thumbToIndex < 0.1 || thumbLength < 0.08;
+            // 根据手指组合识别数字
+            if (indexUp && !middleUp && !ringUp && !pinkyUp) {
+                return 1;
+            } else if (indexUp && middleUp && !ringUp && !pinkyUp) {
+                return 2;
+            } else if (indexUp && middleUp && ringUp && !pinkyUp) {
+                return 3;
+            } else if (indexUp && middleUp && ringUp && pinkyUp && !thumbUp) {
+                return 4;
+            } else if (indexUp && middleUp && ringUp && pinkyUp && thumbUp) {
+                return 5;
+            }
+            
+            return -1; // 无法识别的手势
         }
 
         function processGestures(result) {
@@ -587,54 +746,34 @@
                 STATE.hand.x = (lm[9].x - 0.5) * 2; 
                 STATE.hand.y = (lm[9].y - 0.5) * 2;
 
-                // 检测每根手指是否弯曲
-                const indexCurled = isFingerCurled(lm, 8, 6, 5);   // 食指
-                const middleCurled = isFingerCurled(lm, 12, 10, 9); // 中指
-                const ringCurled = isFingerCurled(lm, 16, 14, 13);  // 无名指
-                const pinkyCurled = isFingerCurled(lm, 20, 18, 17); // 小指
-                const thumbCurled = isThumbCurled(lm);
-                
-                // 计算弯曲手指数量
-                const curledCount = [indexCurled, middleCurled, ringCurled, pinkyCurled].filter(Boolean).length;
-                
-                // 捏合检测：拇指和食指靠近
-                const thumbTip = lm[4];
-                const indexTip = lm[8];
-                const pinchDist = Math.hypot(thumbTip.x - indexTip.x, thumbTip.y - indexTip.y, thumbTip.z - indexTip.z);
-                const isPinching = pinchDist < 0.08; // 放宽阈值
-                
-                // 检测OK手势：拇指+食指靠近形成圆圈，其他三指伸直
-                const otherFingersStraight = !middleCurled && !ringCurled && !pinkyCurled;
-                const isOkGesture = isPinching && otherFingersStraight;
-                
-                // 手势判断逻辑
-                // 1. OK手势（👌）：拇指食指形成圆圈，其他手指伸直 → 聚焦
-                // 2. 握拳（✊）：3根以上手指弯曲 → 树形
-                // 3. 张开（🖐️）：2根以下手指弯曲 → 散开
-                
-                if (isOkGesture) {
-                    // OK手势 → 聚焦照片
+                const thumb = lm[4]; const index = lm[8]; const wrist = lm[0];
+                const pinchDist = Math.hypot(thumb.x - index.x, thumb.y - index.y);
+                const tips = [lm[8], lm[12], lm[16], lm[20]];
+                let avgDist = 0;
+                tips.forEach(t => avgDist += Math.hypot(t.x - wrist.x, t.y - wrist.y));
+                avgDist /= 4;
+
+                // 识别数字手势
+                const number = recognizeNumberGesture(result.landmarks);
+                if (number >= 1 && number <= 3) {
+                    STATE.mode = 'NUMBER';
+                    STATE.numberMode = number; // 记录当前数字模式
+                    STATE.focusTarget = null;
+                } else if (pinchDist < 0.05) {
                     if (STATE.mode !== 'FOCUS') {
                         STATE.mode = 'FOCUS';
                         const photos = particleSystem.filter(p => p.type === 'PHOTO');
                         if (photos.length) STATE.focusTarget = photos[Math.floor(Math.random()*photos.length)].mesh;
                     }
-                } else if (curledCount >= 3) {
-                    // 握拳（3根以上手指弯曲）
+                } else if (avgDist < 0.25) {
                     STATE.mode = 'TREE';
                     STATE.focusTarget = null;
-                } else if (curledCount <= 1 && !isPinching) {
-                    // 张开手掌（最多1根手指弯曲，且不是捏合状态）
+                } else if (avgDist > 0.4) {
                     STATE.mode = 'SCATTER';
                     STATE.focusTarget = null;
                 }
-                // 过渡状态保持当前模式
-                
             } else {
-                // 未检测到手势时恢复树形状态
                 STATE.hand.detected = false;
-                STATE.mode = 'TREE';
-                STATE.focusTarget = null;
             }
         }
 
@@ -645,70 +784,44 @@
                 renderer.setSize(window.innerWidth, window.innerHeight);
                 composer.setSize(window.innerWidth, window.innerHeight);
             });
-            
             document.getElementById('file-input').addEventListener('change', handleImageUpload);
-
-            // 触摸旋转
-            const canvas = renderer.domElement;
             
-            canvas.addEventListener('touchstart', (e) => {
-                if (e.touches.length === 1) {
-                    STATE.touch.isDragging = true;
-                    STATE.touch.lastX = e.touches[0].clientX;
-                    STATE.touch.lastY = e.touches[0].clientY;
-                } else if (e.touches.length === 2) {
-                    STATE.touch.pinchDistance = getPinchDistance(e.touches);
+            // Toggle UI logic - ONLY hide controls, keep title
+            window.addEventListener('keydown', (e) => {
+                if (e.key.toLowerCase() === 'h') {
+                    const controls = document.querySelector('.upload-wrapper');
+                    if (controls) controls.classList.toggle('ui-hidden');
                 }
-            }, { passive: true });
-
-            canvas.addEventListener('touchmove', (e) => {
-                if (e.touches.length === 1 && STATE.touch.isDragging) {
-                    const deltaX = e.touches[0].clientX - STATE.touch.lastX;
-                    const deltaY = e.touches[0].clientY - STATE.touch.lastY;
-                    
-                    STATE.rotation.y += deltaX * 0.008;
-                    STATE.rotation.x += deltaY * 0.004;
-                    STATE.rotation.x = Math.max(-0.5, Math.min(0.5, STATE.rotation.x));
-                    
-                    STATE.touch.lastX = e.touches[0].clientX;
-                    STATE.touch.lastY = e.touches[0].clientY;
-                } else if (e.touches.length === 2) {
-                    const newDistance = getPinchDistance(e.touches);
-                    const scale = newDistance / STATE.touch.pinchDistance;
-                    camera.position.z = Math.max(25, Math.min(80, camera.position.z / scale));
-                    STATE.touch.pinchDistance = newDistance;
+            });
+            // Support touch tap to hide controls on mobile as backup
+            document.addEventListener('touchstart', (e) => {
+                if(e.touches.length === 3) { // 3 finger tap to hide
+                     const controls = document.querySelector('.upload-wrapper');
+                     if (controls) controls.classList.toggle('ui-hidden');
                 }
-            }, { passive: true });
-
-            canvas.addEventListener('touchend', () => {
-                STATE.touch.isDragging = false;
-            }, { passive: true });
-        }
-
-        function getPinchDistance(touches) {
-            const dx = touches[0].clientX - touches[1].clientX;
-            const dy = touches[0].clientY - touches[1].clientY;
-            return Math.sqrt(dx * dx + dy * dy);
+            });
         }
 
         function animate() {
             requestAnimationFrame(animate);
             const dt = clock.getDelta();
 
-            const autoRotate = !STATE.touch.isDragging;
-            
-            // 手势控制旋转
+            // Rotation Logic
             if (STATE.mode === 'SCATTER' && STATE.hand.detected) {
                 const targetRotY = STATE.hand.x * Math.PI * 0.9; 
                 const targetRotX = STATE.hand.y * Math.PI * 0.25;
                 STATE.rotation.y += (targetRotY - STATE.rotation.y) * 3.0 * dt;
                 STATE.rotation.x += (targetRotX - STATE.rotation.x) * 3.0 * dt;
-            } else if (autoRotate) {
+            } else {
                 if(STATE.mode === 'TREE') {
                     STATE.rotation.y += 0.3 * dt;
                     STATE.rotation.x += (0 - STATE.rotation.x) * 2.0 * dt;
+                } else if (STATE.mode === 'NUMBER') {
+                    // 数字模式：缓慢旋转，让用户看清数字
+                    STATE.rotation.y += 0.05 * dt;
+                    STATE.rotation.x += (0 - STATE.rotation.x) * 2.0 * dt;
                 } else {
-                    STATE.rotation.y += 0.1 * dt; 
+                     STATE.rotation.y += 0.1 * dt; 
                 }
             }
 
